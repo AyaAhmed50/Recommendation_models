@@ -1,0 +1,10 @@
+numpy==1.24.4
+pandas
+scikit-learn
+lightgbm
+gensim
+scipy
+scikit-surprise
+uvicorn
+fastapi
+pydantic
