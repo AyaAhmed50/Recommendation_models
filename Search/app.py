@@ -1,31 +1,49 @@
+# app.py
+
 from fastapi import FastAPI
 from pydantic import BaseModel
+from gensim.models import Word2Vec
+import pandas as pd
 import pickle
 import uvicorn
-from sklearn.metrics.pairwise import cosine_similarity
+
+# Load trained model and data
+model = Word2Vec.load("word2vec.model")
+
+with open("product_data.pkl", "rb") as f:
+    df = pickle.load(f)
 
 app = FastAPI()
-
-# Load TF-IDF model
-with open("search_model.pkl", "rb") as f:
-    vectorizer, tfidf_matrix, product_names, df = pickle.load(f)
 
 class SearchRequest(BaseModel):
     query: str
 
-@app.post("/search")
-def search_products(request: SearchRequest):
-    query_vector = vectorizer.transform([request.query])
-    cosine_similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
-    top_indices = cosine_similarities.argsort()[-5:][::-1]
-    recommended_names = [product_names[i] for i in top_indices]
-    
-    recommended_df = df[df['Product Name'].isin(recommended_names)][['Product ID', 'Product Name', 'Rate']].drop_duplicates()
-    
+@app.post("/w2v-search")
+def search_word2vec_products(request: SearchRequest):
+    search_input = request.query.lower().split()
+    search_terms = [word for word in search_input if word in model.wv.key_to_index]
+
+    if not search_terms:
+        return {
+            "query": request.query,
+            "message": "None of the search terms exist in the model vocabulary.",
+            "recommendations": []
+        }
+
+    similar_words = model.wv.most_similar(positive=search_terms, topn=10)
+    similar_keywords = [word for word, _ in similar_words]
+
+    mask = df['Full Description'].str.lower().apply(
+        lambda x: any(sim_word in x for sim_word in similar_keywords)
+    )
+
+    recommended_products = df[mask][['Product ID', 'Product Name']].drop_duplicates().head(10)
+
     return {
         "query": request.query,
-        "recommendations": recommended_df.to_dict(orient="records")
+        "similar_keywords": similar_keywords,
+        "recommendations": recommended_products.to_dict(orient="records")
     }
 
-if __name__ == '__main__':
-    uvicorn.run(app, host='localhost', port=1111)
+if __name__ == "__main__":
+    uvicorn.run(app, host="localhost", port=1112)

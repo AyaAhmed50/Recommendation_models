@@ -8,3 +8,4 @@ scikit-surprise
 uvicorn
 fastapi
 pydantic
+gensim
